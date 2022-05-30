@@ -1,15 +1,27 @@
 use std::{
+    fmt,
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Write},
 };
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
-struct Trace {
-    ids: Vec<usize>,
-    program_counters: Vec<usize>,
-    hit_counters: Vec<usize>,
+#[derive(Debug)]
+struct BasicBlockEntry {
+    id: usize,
+    program_counter: usize,
+    hit_counter: usize,
+}
+
+impl fmt::Display for BasicBlockEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:04x} {:x} {}",
+            self.id, self.program_counter, self.hit_counter
+        )
+    }
 }
 
 #[derive(Parser)]
@@ -23,7 +35,9 @@ struct Cli {
     valid_bb_file: std::path::PathBuf,
 }
 
-fn parse_bb_trace(file: File, valid_bb: &[usize]) -> Result<Trace> {
+fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockEntry>> {
+    let mut entries = Vec::new();
+
     let reader = BufReader::new(file);
     let mut ids = Vec::new();
     let mut program_counters = Vec::new();
@@ -50,11 +64,15 @@ fn parse_bb_trace(file: File, valid_bb: &[usize]) -> Result<Trace> {
     assert_eq!(ids.len(), program_counters.len());
     assert_eq!(program_counters.len(), hit_counters.len());
 
-    Ok(Trace {
-        ids,
-        program_counters,
-        hit_counters,
-    })
+    for i in 0..ids.len() {
+        entries.push(BasicBlockEntry {
+            id: ids[i],
+            program_counter: program_counters[i],
+            hit_counter: hit_counters[i],
+        });
+    }
+
+    Ok(entries)
 }
 
 fn main() -> Result<()> {
@@ -72,14 +90,31 @@ fn main() -> Result<()> {
     // Only Read valid traces from valid BBs
     let trace_file_1 = File::open(&args.trace_file_1)
         .with_context(|| format!("Could not read file {:?}", &args.trace_file_1))?;
-    let traces_1 = parse_bb_trace(trace_file_1, &valid_bb)?;
+    let traces_1 = parse_bb_trace_file(trace_file_1, &valid_bb)?;
     let trace_file_2 = File::open(&args.trace_file_2)
         .with_context(|| format!("Could not read file {:?}", &args.trace_file_2))?;
-    let trace_2 = parse_bb_trace(trace_file_2, &valid_bb)?;
+    let trace_2 = parse_bb_trace_file(trace_file_2, &valid_bb)?;
 
     // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
 
-    // TODO: Write back traces
+    // Write back unified traces
+    let mut unified_trace_file_1 = File::create(format!(
+        "unified_{}",
+        &args.trace_file_1.file_name().unwrap().to_str().unwrap()
+    ))?;
+
+    for trace in traces_1.iter() {
+        writeln!(unified_trace_file_1, "{}", trace)?;
+    }
+
+    let mut unified_trace_file_2 = File::create(format!(
+        "unified_{}",
+        &args.trace_file_2.file_name().unwrap().to_str().unwrap()
+    ))?;
+
+    for trace in trace_2.iter() {
+        writeln!(unified_trace_file_2, "{}", trace)?;
+    }
 
     Ok(())
 }
