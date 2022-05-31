@@ -46,17 +46,20 @@ fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockE
     let mut program_counters = Vec::new();
     let mut hit_counters = Vec::new();
 
+    let mut id_offset = 0;
+
     for line in reader.lines().map(|l| l.unwrap()) {
         let parts: Vec<&str> = line.splitn(3, ' ').collect();
         let id = usize::from_str_radix(parts[0], 16)?;
         let pc = usize::from_str_radix(parts[1], 16)?;
         let hit_count = parts[2].parse::<usize>()?;
 
-        ids.push(id);
-
         if valid_bb.contains(&pc) {
+            ids.push(id - id_offset);
             program_counters.push(pc);
             hit_counters.push(hit_count);
+        } else {
+            id_offset += 1;
         }
     }
 
