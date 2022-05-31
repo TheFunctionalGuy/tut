@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    fs::File,
+    fs::{self, File},
     io::{BufRead, BufReader, Write},
 };
 
@@ -33,6 +33,9 @@ struct Cli {
     trace_file_2: std::path::PathBuf,
     /// File providing all valid basic blocks which are used to unify trace files
     valid_bb_file: std::path::PathBuf,
+    /// Output path
+    #[clap(short, default_value = ".")]
+    output_path: std::path::PathBuf,
 }
 
 fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockEntry>> {
@@ -98,19 +101,26 @@ fn main() -> Result<()> {
     // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
 
     // Write back unified traces
-    let mut unified_trace_file_1 = File::create(format!(
-        "unified_{}",
-        &args.trace_file_1.file_name().unwrap().to_str().unwrap()
-    ))?;
+    let mut unified_trace_file_1_path = args.output_path.clone();
+    unified_trace_file_1_path.push(&args.trace_file_1.file_name().unwrap());
+    unified_trace_file_1_path.set_extension("unified");
+
+    fs::create_dir_all(&unified_trace_file_1_path.parent().unwrap())
+        .expect("Unable to create output dir");
+
+    let mut unified_trace_file_1 =
+        File::create(unified_trace_file_1_path).expect("Unable to create output file");
 
     for trace in traces_1.iter() {
         writeln!(unified_trace_file_1, "{}", trace)?;
     }
 
-    let mut unified_trace_file_2 = File::create(format!(
-        "unified_{}",
-        &args.trace_file_2.file_name().unwrap().to_str().unwrap()
-    ))?;
+    let mut unified_trace_file_2_path = args.output_path.clone();
+    unified_trace_file_2_path.push(&args.trace_file_2.file_name().unwrap());
+    unified_trace_file_2_path.set_extension("unified");
+
+    let mut unified_trace_file_2 =
+        File::create(unified_trace_file_2_path).expect("Unable to create output file");
 
     for trace in trace_2.iter() {
         writeln!(unified_trace_file_2, "{}", trace)?;
