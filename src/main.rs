@@ -84,7 +84,9 @@ fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockE
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    // TODO: Read and parse all files
+    // TODO: Add support for multiple files???
+
+    // Read and parse all files
     let valid_bb_file = File::open(&args.valid_bb_file)
         .with_context(|| format!("Could not read file {:?}", &args.valid_bb_file))?;
     let valid_bb: Vec<usize> = BufReader::new(valid_bb_file)
@@ -93,6 +95,7 @@ fn main() -> Result<()> {
         .filter_map(|l| usize::from_str_radix(&l, 16).ok())
         .collect();
 
+    // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
     // Only Read valid traces from valid BBs
     let trace_file_1 = File::open(&args.trace_file_1)
         .with_context(|| format!("Could not read file {:?}", &args.trace_file_1))?;
@@ -100,8 +103,6 @@ fn main() -> Result<()> {
     let trace_file_2 = File::open(&args.trace_file_2)
         .with_context(|| format!("Could not read file {:?}", &args.trace_file_2))?;
     let trace_2 = parse_bb_trace_file(trace_file_2, &valid_bb)?;
-
-    // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
 
     // Write back unified traces
     let mut unified_trace_file_1_path = args.output_path.clone();
