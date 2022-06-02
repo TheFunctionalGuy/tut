@@ -17,11 +17,17 @@ struct BasicBlockEntry {
 
 impl Display for BasicBlockEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:04x} {:x} {}",
-            self.id, self.program_counter, self.hit_counter
-        )
+        if !f.alternate() {
+            // Non-stripped version
+            write!(
+                f,
+                "{:04x} {:x} {}",
+                self.id, self.program_counter, self.hit_counter
+            )
+        } else {
+            // Stripped version
+            write!(f, "{:x} {}", self.program_counter, self.hit_counter)
+        }
     }
 }
 
@@ -38,6 +44,9 @@ struct Cli {
     /// Flag to enable verbose output
     #[clap(long, short)]
     verbose: bool,
+    /// Flag to enable id stripping
+    #[clap(long)]
+    strip: bool,
 }
 
 fn parse_bb_trace_file(
@@ -97,12 +106,18 @@ fn parse_bb_trace_file(
     Ok(entries)
 }
 
-fn write_trace_file<T: Display>(traces: &[T], file_path: PathBuf) -> Result<()> {
+fn write_trace_file<T: Display>(traces: &[T], file_path: PathBuf, strip: bool) -> Result<()> {
     let mut unified_trace_file = File::create(&file_path)
         .with_context(|| format!("Unable to create output file {:?}", &file_path))?;
 
     for trace in traces.iter() {
-        writeln!(unified_trace_file, "{}", trace)?;
+        if !strip {
+            // Write non-stripped version
+            writeln!(unified_trace_file, "{}", trace)?;
+        } else {
+            // Write stripped version
+            writeln!(unified_trace_file, "{:#}", trace)?;
+        }
     }
 
     Ok(())
@@ -153,9 +168,14 @@ fn main() -> Result<()> {
             let mut unified_trace_file_path = output_path.clone();
 
             unified_trace_file_path.push(&path.file_name().unwrap());
-            unified_trace_file_path.set_extension("unified");
 
-            write_trace_file(&traces, unified_trace_file_path)?;
+            if !args.strip {
+                unified_trace_file_path.set_extension("unified");
+            } else {
+                unified_trace_file_path.set_extension("stripped");
+            }
+
+            write_trace_file(&traces, unified_trace_file_path, args.strip)?;
         }
     }
 
