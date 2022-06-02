@@ -167,7 +167,7 @@ fn main() -> Result<()> {
     // Handle all trace files
     trace_file_paths.par_iter().for_each(|path| {
         // Only read valid traces from valid BBs (unification)
-        let traces = parse_bb_trace_file(&path, &valid_bb, args.verbose)
+        let traces = parse_bb_trace_file(path, &valid_bb, args.verbose)
             .with_context(|| format!("Error while parsing trace file {:?}", path))
             .unwrap();
 
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
             unified_trace_file_path.set_extension("stripped");
         }
 
-        write_trace_file(&traces, unified_trace_file_path, args.strip);
+        write_trace_file(&traces, unified_trace_file_path, args.strip).unwrap();
     });
 
     Ok(())
