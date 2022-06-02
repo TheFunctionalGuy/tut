@@ -35,12 +35,21 @@ struct Cli {
     /// Output path
     #[clap(short)]
     output_path: Option<PathBuf>,
+    /// Flag to enable verbose ouput
+    #[clap(long, short)]
+    verbose: bool,
 }
 
-fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockEntry>> {
+fn parse_bb_trace_file(
+    path: &PathBuf,
+    valid_bb: &[usize],
+    verbose: bool,
+) -> Result<Vec<BasicBlockEntry>> {
+    let trace_file = File::open(path).with_context(|| format!("Could not read file {:?}", path))?;
+
     let mut entries = Vec::new();
 
-    let reader = BufReader::new(file);
+    let reader = BufReader::new(trace_file);
     let mut ids = Vec::new();
     let mut program_counters = Vec::new();
     let mut hit_counters = Vec::new();
@@ -75,6 +84,14 @@ fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockE
             program_counter: program_counters[i],
             hit_counter: hit_counters[i],
         });
+    }
+
+    if verbose {
+        println!(
+            "{} basic block entries deleted for file: '{}'",
+            id_offset,
+            path.to_string_lossy()
+        );
     }
 
     Ok(entries)
@@ -129,9 +146,7 @@ fn main() -> Result<()> {
 
         for path in trace_paths {
             // Only read valid traces from valid BBs (unification)
-            let trace_file =
-                File::open(&path).with_context(|| format!("Could not read file {:?}", &path))?;
-            let traces = parse_bb_trace_file(trace_file, &valid_bb)
+            let traces = parse_bb_trace_file(&path, &valid_bb, args.verbose)
                 .with_context(|| format!("Error while parsing trace file {:?}", &path))?;
 
             // Write back unified traces
