@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use rayon::prelude::*;
 
 #[derive(Debug)]
 struct BasicBlockEntry {
@@ -143,41 +144,46 @@ fn main() -> Result<()> {
         PathBuf::new()
     };
 
-    // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
-    // TODO: Parallelize
-    // Handle all trace files
-    for trace_file in args.trace_files {
-        let trace_paths = if let Ok(dir_entries) = fs::read_dir(&trace_file) {
-            dir_entries
-                .into_iter()
-                .filter_map(|d| d.ok())
-                .map(|e| e.path())
-                .collect::<Vec<PathBuf>>()
-        } else {
-            // Either error happened or the trace file isn't a directory,
-            // will handle error case later
-            vec![trace_file]
-        };
-
-        for path in trace_paths {
-            // Only read valid traces from valid BBs (unification)
-            let traces = parse_bb_trace_file(&path, &valid_bb, args.verbose)
-                .with_context(|| format!("Error while parsing trace file {:?}", &path))?;
-
-            // Write back unified traces
-            let mut unified_trace_file_path = output_path.clone();
-
-            unified_trace_file_path.push(&path.file_name().unwrap());
-
-            if !args.strip {
-                unified_trace_file_path.set_extension("unified");
+    // Collect all trace file paths
+    let trace_file_paths: Vec<PathBuf> = args
+        .trace_files
+        .iter()
+        .flat_map(|path| {
+            if let Ok(dir_entries) = fs::read_dir(path) {
+                dir_entries
+                    .into_iter()
+                    .filter_map(|d| d.ok())
+                    .map(|e| e.path())
+                    .collect::<Vec<PathBuf>>()
             } else {
-                unified_trace_file_path.set_extension("stripped");
+                // Either error happened or the trace file isn't a directory,
+                // will handle error case later
+                vec![path.clone()]
             }
+        })
+        .collect();
 
-            write_trace_file(&traces, unified_trace_file_path, args.strip)?;
+    // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
+    // Handle all trace files
+    trace_file_paths.par_iter().for_each(|path| {
+        // Only read valid traces from valid BBs (unification)
+        let traces = parse_bb_trace_file(&path, &valid_bb, args.verbose)
+            .with_context(|| format!("Error while parsing trace file {:?}", path))
+            .unwrap();
+
+        // Write back unified traces
+        let mut unified_trace_file_path = output_path.clone();
+
+        unified_trace_file_path.push(path.file_name().unwrap());
+
+        if !args.strip {
+            unified_trace_file_path.set_extension("unified");
+        } else {
+            unified_trace_file_path.set_extension("stripped");
         }
-    }
+
+        write_trace_file(&traces, unified_trace_file_path, args.strip);
+    });
 
     Ok(())
 }
