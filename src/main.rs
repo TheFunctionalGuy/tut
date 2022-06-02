@@ -1,7 +1,8 @@
 use std::{
-    fmt,
+    fmt::{self, Display},
     fs::{self, File},
     io::{BufRead, BufReader, Write},
+    path::PathBuf,
 };
 
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ struct BasicBlockEntry {
     hit_counter: usize,
 }
 
-impl fmt::Display for BasicBlockEntry {
+impl Display for BasicBlockEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -27,15 +28,13 @@ impl fmt::Display for BasicBlockEntry {
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    /// First file containing traces to unify
-    trace_file_1: std::path::PathBuf,
-    /// Second file containing traces to unify
-    trace_file_2: std::path::PathBuf,
     /// File providing all valid basic blocks which are used to unify trace files
-    valid_bb_file: std::path::PathBuf,
+    valid_bb_file: PathBuf,
+    /// File(s) containing traces to unify
+    trace_files: Vec<PathBuf>,
     /// Output path
-    #[clap(short, default_value = ".")]
-    output_path: std::path::PathBuf,
+    #[clap(short)]
+    output_path: Option<PathBuf>,
 }
 
 fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockEntry>> {
@@ -81,12 +80,21 @@ fn parse_bb_trace_file(file: File, valid_bb: &[usize]) -> Result<Vec<BasicBlockE
     Ok(entries)
 }
 
+fn write_trace_file<T: Display>(traces: &[T], file_path: PathBuf) -> Result<()> {
+    let mut unified_trace_file = File::create(&file_path)
+        .with_context(|| format!("Unable to create output file {:?}", &file_path))?;
+
+    for trace in traces.iter() {
+        writeln!(unified_trace_file, "{}", trace)?;
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    // TODO: Add support for multiple files???
-
-    // Read and parse all files
+    // Read and parse bb file
     let valid_bb_file = File::open(&args.valid_bb_file)
         .with_context(|| format!("Could not read file {:?}", &args.valid_bb_file))?;
     let valid_bb: Vec<usize> = BufReader::new(valid_bb_file)
@@ -95,39 +103,45 @@ fn main() -> Result<()> {
         .filter_map(|l| usize::from_str_radix(&l, 16).ok())
         .collect();
 
+    // Create output directory beforehand if needed
+    let output_path = if let Some(output_path) = args.output_path {
+        fs::create_dir_all(&output_path).with_context(|| "Unable to create output dir")?;
+        output_path
+    } else {
+        PathBuf::new()
+    };
+
     // TODO: Auto-detect trace format ((mmio?), bb, (ram?))
-    // Only Read valid traces from valid BBs
-    let trace_file_1 = File::open(&args.trace_file_1)
-        .with_context(|| format!("Could not read file {:?}", &args.trace_file_1))?;
-    let traces_1 = parse_bb_trace_file(trace_file_1, &valid_bb)?;
-    let trace_file_2 = File::open(&args.trace_file_2)
-        .with_context(|| format!("Could not read file {:?}", &args.trace_file_2))?;
-    let trace_2 = parse_bb_trace_file(trace_file_2, &valid_bb)?;
+    // TODO: Parallelize
+    // Handle all trace files
+    for trace_file in args.trace_files {
+        let trace_paths = if let Ok(dir_entries) = fs::read_dir(&trace_file) {
+            dir_entries
+                .into_iter()
+                .filter_map(|d| d.ok())
+                .map(|e| e.path())
+                .collect::<Vec<PathBuf>>()
+        } else {
+            // Either error happened or the trace file isn't a directory,
+            // will handle error case later
+            vec![trace_file]
+        };
 
-    // Write back unified traces
-    let mut unified_trace_file_1_path = args.output_path.clone();
-    unified_trace_file_1_path.push(&args.trace_file_1.file_name().unwrap());
-    unified_trace_file_1_path.set_extension("unified");
+        for path in trace_paths {
+            // Only read valid traces from valid BBs (unification)
+            let trace_file =
+                File::open(&path).with_context(|| format!("Could not read file {:?}", &path))?;
+            let traces = parse_bb_trace_file(trace_file, &valid_bb)
+                .with_context(|| format!("Error while parsing trace file {:?}", &path))?;
 
-    fs::create_dir_all(&unified_trace_file_1_path.parent().unwrap())
-        .expect("Unable to create output dir");
+            // Write back unified traces
+            let mut unified_trace_file_path = output_path.clone();
 
-    let mut unified_trace_file_1 =
-        File::create(unified_trace_file_1_path).expect("Unable to create output file");
+            unified_trace_file_path.push(&path.file_name().unwrap());
+            unified_trace_file_path.set_extension("unified");
 
-    for trace in traces_1.iter() {
-        writeln!(unified_trace_file_1, "{}", trace)?;
-    }
-
-    let mut unified_trace_file_2_path = args.output_path.clone();
-    unified_trace_file_2_path.push(&args.trace_file_2.file_name().unwrap());
-    unified_trace_file_2_path.set_extension("unified");
-
-    let mut unified_trace_file_2 =
-        File::create(unified_trace_file_2_path).expect("Unable to create output file");
-
-    for trace in trace_2.iter() {
-        writeln!(unified_trace_file_2, "{}", trace)?;
+            write_trace_file(&traces, unified_trace_file_path)?;
+        }
     }
 
     Ok(())
