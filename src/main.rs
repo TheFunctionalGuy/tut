@@ -35,7 +35,7 @@ struct Cli {
     /// Output path
     #[clap(short)]
     output_path: Option<PathBuf>,
-    /// Flag to enable verbose ouput
+    /// Flag to enable verbose output
     #[clap(long, short)]
     verbose: bool,
 }
