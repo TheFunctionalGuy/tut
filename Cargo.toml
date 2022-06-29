@@ -8,5 +8,5 @@ description = "Trace Unification Tool - A minimal CLI tool to unify traces gener
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "3.1", features = ["derive"] }
+clap = { version = "3.2", features = ["derive"] }
 rayon = "1.5"
